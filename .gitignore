@@ -1,2 +1,3 @@
 *.token
 votes.json
+.vscode/settings.json
