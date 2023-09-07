@@ -6,6 +6,10 @@ import discord  # stuff for discord bot
 from discord import app_commands  # allows discord commands
 import pytz  # for date localization
 
+# logging
+import logging
+import logging.config
+
 # utility to get one full year forward of CTF events
 from dateutil.relativedelta import relativedelta
 from math import *  # all math functions
@@ -14,6 +18,9 @@ from bs4 import BeautifulSoup
 intents = discord.Intents().all()  # we need all discord intents
 client = discord.Client(intents=intents)  # init a client with given intents
 tree = app_commands.CommandTree(client)  # for discord commands
+
+logging.config.fileConfig("logging.conf")
+logger = logging.getLogger("botLogger")
 
 with open("webhookurl.token", "r") as file:
     webhookurl = file.read()  # get the webhook url from file
@@ -73,6 +80,8 @@ async def ctfinfo(interaction, eventid: int):
 
 @tree.command(name="upcoming", description="Get the next 7 days of CTF events")
 async def upcoming(interaction):
+    logger.info("upcoming command was called")
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36"
         "(KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
@@ -85,14 +94,22 @@ async def upcoming(interaction):
     seven_days = datetime.utcnow() + relativedelta(days=+7)
     seven_days = seven_days.timestamp()
 
-    r = requests.get(
-        "https://ctftime.org/api/v1/events/?limit=100"
-        + "&start="
-        + str(int(now))
-        + "&finish="
-        + str(int(seven_days)),
-        headers=headers,
-    )
+    try:
+        r = requests.get(
+            "https://ctftime.org/api/v1/events/?limit=100"
+            + "&start="
+            + str(int(now))
+            + "&finish="
+            + str(int(seven_days)),
+            headers=headers,
+        )
+        r.raise_for_status
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error: %s", errh.args[0])
+        logger.error("Aborting")
+        return
+
+    logger.info("Api request returned: HTTP %d", r.status_code)
 
     data = r.json()
 
@@ -141,6 +158,8 @@ async def upcoming(interaction):
             inline=True,
         )
 
+    logger.info("embed generated, enjoy your information")
+    logger.info("Sending data")
     # send embed
     await interaction.response.send_message(embed=embed)
 
@@ -149,16 +168,29 @@ async def upcoming(interaction):
     name="more_info",
     description="Get more information about a specific CTF by CTF Time ID",
 )
-async def ctfinfo(interaction, eventid: int):
+async def moreinfo(interaction, eventid: int):
+    logger.info("more_info command called")
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
     }
-    r = requests.get(
-        "https://ctftime.org/api/v1/events/" + str(eventid) + "/", headers=headers
-    )
+
+    try:
+        r = requests.get(
+            "https://ctftime.org/api/v1/events/" + str(eventid) + "/", headers=headers
+        )
+        r.raise_for_status()
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error: %s", errh.args[0])
+        logger.error("Aborting")
+        return
+
+    logger.info("Api request returned: HTTP %d", r.status_code)
 
     # get json data from api call
     data = r.json()
+
+    # get the event details
     event_title = data["title"]
     event_url = data["url"]
     event_start = data["start"]
@@ -225,6 +257,8 @@ async def ctfinfo(interaction, eventid: int):
         inline=False,
     )
 
+    logger.info("embed generated, enjoy your information")
+    logger.info("Sending data")
     # send embed
     await interaction.response.send_message(embed=embed)
 
@@ -477,7 +511,7 @@ async def on_message(message):
 @client.event
 async def on_ready():
     await tree.sync()
-    print("yes mom i'm awake")
+    logging.info("Yes, mom, I'm awake.")
 
 
 with open("token.token", "r") as file:
